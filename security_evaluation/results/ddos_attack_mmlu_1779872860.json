@@ -1,0 +1,303 @@
+{
+  "attack_type": "ddos",
+  "attack_ratio": 0.3,
+  "attack_strategy": "random",
+  "ddos_duration": 60.0,
+  "intensity_range": [
+    0.5,
+    1.0
+  ],
+  "total_peers": 20,
+  "iterations": [
+    {
+      "iteration": 1,
+      "attack_result": {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 6,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          12,
+          13,
+          1,
+          8,
+          15,
+          6
+        ],
+        "intensity_per_node": {
+          "12": 0.959,
+          "13": 0.915,
+          "1": 0.984,
+          "8": 0.679,
+          "15": 0.946,
+          "6": 0.609
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7713618,
+        "targeting_strategy": "random"
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "total_nodes": 20,
+        "active_nodes": 14,
+        "ddos_overloaded_nodes": 6,
+        "availability_percentage": 70.0,
+        "average_load_intensity": 0.849,
+        "load_per_node": {
+          "12": 0.959,
+          "13": 0.915,
+          "1": 0.984,
+          "8": 0.679,
+          "15": 0.946,
+          "6": 0.609
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "attack_result": {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 12,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          3,
+          5,
+          19,
+          2,
+          14,
+          18
+        ],
+        "intensity_per_node": {
+          "3": 0.994,
+          "5": 0.766,
+          "19": 0.853,
+          "2": 0.801,
+          "14": 0.573,
+          "18": 0.549
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7718506,
+        "targeting_strategy": "random"
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "total_nodes": 20,
+        "active_nodes": 8,
+        "ddos_overloaded_nodes": 12,
+        "availability_percentage": 40.0,
+        "average_load_intensity": 0.802,
+        "load_per_node": {
+          "12": 0.959,
+          "13": 0.915,
+          "1": 0.984,
+          "8": 0.679,
+          "15": 0.946,
+          "6": 0.609,
+          "3": 0.994,
+          "5": 0.766,
+          "19": 0.853,
+          "2": 0.801,
+          "14": 0.573,
+          "18": 0.549
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "attack_result": {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 18,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          4,
+          16,
+          11,
+          7,
+          9,
+          10
+        ],
+        "intensity_per_node": {
+          "4": 0.55,
+          "16": 0.717,
+          "11": 0.805,
+          "7": 0.957,
+          "9": 0.983,
+          "10": 0.739
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7723231,
+        "targeting_strategy": "random"
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "total_nodes": 20,
+        "active_nodes": 2,
+        "ddos_overloaded_nodes": 18,
+        "availability_percentage": 10.0,
+        "average_load_intensity": 0.799,
+        "load_per_node": {
+          "12": 0.959,
+          "13": 0.915,
+          "1": 0.984,
+          "8": 0.679,
+          "15": 0.946,
+          "6": 0.609,
+          "3": 0.994,
+          "5": 0.766,
+          "19": 0.853,
+          "2": 0.801,
+          "14": 0.573,
+          "18": 0.549,
+          "4": 0.55,
+          "16": 0.717,
+          "11": 0.805,
+          "7": 0.957,
+          "9": 0.983,
+          "10": 0.739
+        }
+      }
+    }
+  ],
+  "initial_availability": 100.0,
+  "final_availability": 10.0,
+  "final_metrics": {
+    "total_nodes": 20,
+    "active_nodes": 2,
+    "ddos_overloaded_nodes": 18,
+    "availability_percentage": 10.0,
+    "average_load_intensity": 0.799,
+    "load_per_node": {
+      "12": 0.959,
+      "13": 0.915,
+      "1": 0.984,
+      "8": 0.679,
+      "15": 0.946,
+      "6": 0.609,
+      "3": 0.994,
+      "5": 0.766,
+      "19": 0.853,
+      "2": 0.801,
+      "14": 0.573,
+      "18": 0.549,
+      "4": 0.55,
+      "16": 0.717,
+      "11": 0.805,
+      "7": 0.957,
+      "9": 0.983,
+      "10": 0.739
+    }
+  },
+  "execution_time": 0.00215,
+  "attack_summary": {
+    "attack_name": "ddos",
+    "attack_type": "ddos",
+    "attack_ratio": 0.3,
+    "strategy": "random",
+    "total_rounds": 3,
+    "all_attacked_nodes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19
+    ],
+    "attack_history": [
+      {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 6,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          12,
+          13,
+          1,
+          8,
+          15,
+          6
+        ],
+        "intensity_per_node": {
+          "12": 0.959,
+          "13": 0.915,
+          "1": 0.984,
+          "8": 0.679,
+          "15": 0.946,
+          "6": 0.609
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7713618,
+        "targeting_strategy": "random"
+      },
+      {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 12,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          3,
+          5,
+          19,
+          2,
+          14,
+          18
+        ],
+        "intensity_per_node": {
+          "3": 0.994,
+          "5": 0.766,
+          "19": 0.853,
+          "2": 0.801,
+          "14": 0.573,
+          "18": 0.549
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7718506,
+        "targeting_strategy": "random"
+      },
+      {
+        "attack_type": "ddos",
+        "total_nodes": 20,
+        "newly_overloaded": 6,
+        "cumulative_overloaded": 18,
+        "overload_ratio": 0.3,
+        "target_indices": [
+          4,
+          16,
+          11,
+          7,
+          9,
+          10
+        ],
+        "intensity_per_node": {
+          "4": 0.55,
+          "16": 0.717,
+          "11": 0.805,
+          "7": 0.957,
+          "9": 0.983,
+          "10": 0.739
+        },
+        "attack_duration_seconds": 60.0,
+        "expires_at": 1779872920.7723231,
+        "targeting_strategy": "random"
+      }
+    ]
+  }
+}

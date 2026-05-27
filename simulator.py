@@ -24,6 +24,7 @@ from modules.attacks import (
     DataPoisoningAttack,
     KnowledgeBaseExtractionAttack,
     MembershipInferenceAttack,
+    DDoSAttack,
 )
 
 
@@ -308,6 +309,194 @@ def apply_node_attack_damage(rag_network, node_attack_results: dict):
     sys.stdout.flush()
 
 
+
+
+# ==============================================================================
+# DDOS-SPECIFIC ATTACK FUNCTIONS
+# ==============================================================================
+
+def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
+    """
+    Run a DDoS node availability attack using ddos_attack.NodeAttack.
+    This is a separate function that leaves run_node_availability_attack() untouched
+    so all other attack types continue to work as before.
+    """
+    print("" + "="*70)
+    print("DDOS NODE AVAILABILITY ATTACK - TESTING SYSTEM RESILIENCE")
+    print("="*70)
+    sys.stdout.flush()
+
+    attack_ratio       = getattr(cfg.rag, "node_attack_ratio", 0.3)
+    attack_iterations  = getattr(cfg.rag, "node_attack_iterations", 5)
+    attack_strategy    = getattr(cfg.rag, "attack_strategy", "random")
+    target_peers       = getattr(cfg.rag, "target_peers", [])
+    ddos_duration      = getattr(cfg.rag, "ddos_duration", 60.0)
+    ddos_intensity_min = getattr(cfg.rag, "ddos_intensity_min", 0.5)
+    ddos_intensity_max = getattr(cfg.rag, "ddos_intensity_max", 1.0)
+    intensity_range    = (ddos_intensity_min, ddos_intensity_max)
+
+    print(f"DDoS Attack Configuration:")
+    print(f"  Attack Ratio    : {attack_ratio} ({attack_ratio*100:.0f}% of nodes per wave)")
+    print(f"  Attack Strategy : {attack_strategy}")
+    print(f"  Iterations      : {attack_iterations}")
+    print(f"  Duration/wave   : {ddos_duration}s")
+    print(f"  Intensity range : {intensity_range}")
+    print(f"  Dataset         : {dataset_type}")
+    if target_peers:
+        print(f"  Target Peers    : {target_peers}")
+    sys.stdout.flush()
+
+    if not hasattr(rag_network, "peers"):
+        print("ERROR: RAG network has no peers attribute")
+        sys.stdout.flush()
+        return {"status": "failed", "error": "No peers found in network"}
+
+    peers = rag_network.peers
+    if isinstance(peers, dict):
+        nodes, num_peers = list(peers.values()), len(peers)
+    elif isinstance(peers, list):
+        nodes, num_peers = peers, len(peers)
+    else:
+        print(f"ERROR: Unknown peers format: {type(peers)}")
+        sys.stdout.flush()
+        return {"status": "failed", "error": "Invalid peers format"}
+
+    print(f"  Total Peers     : {num_peers}")
+    sys.stdout.flush()
+
+    node_attack = DDoSAttack(
+        attack_ratio=attack_ratio,
+        attack_iterations=attack_iterations,
+        seed=cfg.rag.random_seed,
+    )
+
+    results = {
+        "attack_type": "ddos",
+        "attack_ratio": attack_ratio,
+        "attack_strategy": attack_strategy,
+        "ddos_duration": ddos_duration,
+        "intensity_range": list(intensity_range),
+        "total_peers": num_peers,
+        "iterations": [],
+        "initial_availability": 100.0,
+        "final_availability": 0.0,
+    }
+
+    node_data = {
+        "peer_ids": list(range(num_peers)),
+        "initial_count": num_peers,
+        "dataset_type": dataset_type,
+        "target_peers": target_peers if target_peers else None,
+    }
+
+    print("Starting DDoS attack simulation...")
+    print("="*70)
+    sys.stdout.flush()
+
+    start_time = datetime.now()
+
+    for iteration in range(attack_iterations):
+        print(f"--- Iteration {iteration + 1}/{attack_iterations} ---")
+        sys.stdout.flush()
+
+        attack_result = node_attack.execute(
+            nodes, node_data,
+            strategy=attack_strategy,
+            duration=ddos_duration,
+            intensity_range=intensity_range,
+        )
+
+        recovered = node_attack._recover_expired_nodes(node_data)
+        if recovered:
+            print(f"  ↩  Recovered {len(recovered)} node(s): {recovered}")
+
+        availability_metrics = node_attack._evaluate_availability(nodes, node_data)
+        results["iterations"].append({
+            "iteration": iteration + 1,
+            "attack_result": attack_result,
+            "recovered_nodes": recovered,
+            "availability_metrics": availability_metrics,
+        })
+
+        avail_pct  = availability_metrics["availability_percentage"]
+        active     = availability_metrics["active_nodes"]
+        overloaded = availability_metrics["ddos_overloaded_nodes"]
+        avg_load   = availability_metrics["average_load_intensity"]
+
+        print(f"  Availability     : {avail_pct:.2f}% ({active}/{num_peers} nodes active)")
+        print(f"  Overloaded nodes : {overloaded}  |  Avg load: {avg_load:.3f}")
+        print(f"  Newly overloaded : {attack_result.get('newly_overloaded', 0)}"
+              f"  |  Cumulative: {attack_result.get('cumulative_overloaded', 0)}")
+
+        intensity_map = attack_result.get("intensity_per_node", {})
+        if intensity_map:
+            print(f"  Node intensities : { {k: f'{v:.2f}' for k, v in intensity_map.items()} }")
+
+        sys.stdout.flush()
+
+        confidence_threshold = getattr(cfg.rag, "confidence_threshold", 0.5)
+        if avail_pct < confidence_threshold * 100:
+            print(f"  ⚠️  System availability below threshold ({confidence_threshold*100:.0f}%)")
+            sys.stdout.flush()
+
+    elapsed_time = (datetime.now() - start_time).total_seconds()
+    final_metrics = node_attack._evaluate_availability(nodes, node_data)
+    results["final_availability"] = final_metrics["availability_percentage"]
+    results["final_metrics"] = final_metrics
+    results["execution_time"] = elapsed_time
+    results["attack_summary"] = node_attack.get_attack_summary()
+
+    print("" + "="*70)
+    print("DDOS ATTACK SUMMARY")
+    print("="*70)
+    print(f"Total Iterations : {attack_iterations}")
+    print(f"Execution Time   : {elapsed_time:.2f}s")
+    print(f"Initial Avail.   : {results['initial_availability']:.2f}%")
+    print(f"Final Avail.     : {results['final_availability']:.2f}%")
+    print(f"Degradation      : {results['initial_availability'] - results['final_availability']:.2f}%")
+    print(f"Avg load (final) : {final_metrics['average_load_intensity']:.3f}")
+    print("="*70)
+    sys.stdout.flush()
+
+    drag_root = os.path.dirname(os.path.abspath(__file__))
+    results_dir = os.path.join(drag_root, "security_evaluation", "results")
+    os.makedirs(results_dir, exist_ok=True)
+    result_file = os.path.join(
+        results_dir,
+        f"ddos_attack_{dataset_type}_{int(datetime.now().timestamp())}.json"
+    )
+    with open(result_file, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"[+] DDoS attack results saved to: {result_file}")
+    sys.stdout.flush()
+
+    return results
+
+
+def apply_ddos_node_attack_damage(rag_network, node_attack_results: dict):
+    """
+    Apply DDoS damage to the live network.
+    Uses DDoSAttack.apply_to_network() to disable critically overloaded nodes (intensity >= 0.9).
+    Leaves the original apply_node_attack_damage() untouched for other attack types.
+    """
+    print("=" * 70)
+    print("APPLYING DDOS ATTACK DAMAGE TO NETWORK")
+    print("=" * 70)
+    sys.stdout.flush()
+
+    if not node_attack_results or "attack_type" not in node_attack_results:
+        print("WARNING: No node attack results found, skipping damage application")
+        sys.stdout.flush()
+        return
+
+    DDoSAttack.apply_to_network(rag_network, node_attack_results)
+
+    final_avail   = node_attack_results.get("final_availability", 100.0)
+    initial_avail = node_attack_results.get("initial_availability", 100.0)
+    print(f"Network availability degraded by {initial_avail - final_avail:.2f}%")
+    print("=" * 70)
+    sys.stdout.flush()
+
 def run_simulation(cfg: Namespace):
     # Init csv logger
     exp_logger = ExpLogger()
@@ -386,107 +575,107 @@ def run_simulation(cfg: Namespace):
     # === ATTACK SIMULATION ===
     attack_results = None
     mia_results = None
-    if cfg.security.enable_attack:
-        logger.info("=" * 50)
-        logger.info("ATTACK SIMULATION ENABLED")
-        logger.info("=" * 50)
+    # if cfg.security.enable_attack:
+    #     logger.info("=" * 50)
+    #     logger.info("ATTACK SIMULATION ENABLED")
+    #     logger.info("=" * 50)
 
-        attack = DataPoisoningAttack(
-            poisoning_ratio=cfg.security.poisoning_ratio,
-            attack_strategy=cfg.security.attack_strategy,
-            poison_type=cfg.security.poison_type,
-            target_peer_ids=cfg.security.get('target_peer_ids', []),
-            amplification_factor=cfg.security.get('amplification_factor', 3),
-            question_variants=cfg.security.get('question_variants', 2)
-        )
+    #     attack = DataPoisoningAttack(
+    #         poisoning_ratio=cfg.security.poisoning_ratio,
+    #         attack_strategy=cfg.security.attack_strategy,
+    #         poison_type=cfg.security.poison_type,
+    #         target_peer_ids=cfg.security.get('target_peer_ids', []),
+    #         amplification_factor=cfg.security.get('amplification_factor', 3),
+    #         question_variants=cfg.security.get('question_variants', 2)
+    #     )
 
-        attack_results = attack.execute(rag_net, filtered_data_points)
+    #     attack_results = attack.execute(rag_net, filtered_data_points)
 
-        attack_logger = exp_logger.get_yaml_logger("attack_config")
-        attack_logger.log(attack_results)
-        attack_logger.save()
+    #     attack_logger = exp_logger.get_yaml_logger("attack_config")
+    #     attack_logger.log(attack_results)
+    #     attack_logger.save()
 
-        logger.info(f"Attack executed: {attack_results['num_poisoned_peers']} peers poisoned")
+    #     logger.info(f"Attack executed: {attack_results['num_poisoned_peers']} peers poisoned")
 
-    if cfg.security.get('enable_membership_inference', False):
-        logger.info("=" * 50)
-        logger.info("MEMBERSHIP INFERENCE ATTACK ENABLED")
-        logger.info("=" * 50)
-        if cfg.rag.network_type != "DRAG":
-            logger.warning("Membership inference attack is only supported for DRAG networks. Skipping.")
-        else:
-            mia_attack = MembershipInferenceAttack(
-                inference_method=cfg.security.get('mia_inference_method', 'confidence_based'),
-                test_size=cfg.security.get('mia_test_size', 0.3),
-                threshold_percentile=cfg.security.get('mia_threshold_percentile', 50),
-                random_seed=cfg.security.get('mia_random_seed', 42)
-            )
-            mia_results = mia_attack.execute(rag_net, filtered_data_points)
-            mia_logger = exp_logger.get_yaml_logger("mia_config")
-            mia_logger.log(mia_results)
-            mia_logger.save()
-            logger.info(
-                f"MIA executed: Accuracy={mia_results['attack_accuracy']:.2%}, "
-                f"Privacy Risk={mia_results['privacy_risk']}"
-            )
+    # if cfg.security.get('enable_membership_inference', False):
+    #     logger.info("=" * 50)
+    #     logger.info("MEMBERSHIP INFERENCE ATTACK ENABLED")
+    #     logger.info("=" * 50)
+    #     if cfg.rag.network_type != "DRAG":
+    #         logger.warning("Membership inference attack is only supported for DRAG networks. Skipping.")
+    #     else:
+    #         mia_attack = MembershipInferenceAttack(
+    #             inference_method=cfg.security.get('mia_inference_method', 'confidence_based'),
+    #             test_size=cfg.security.get('mia_test_size', 0.3),
+    #             threshold_percentile=cfg.security.get('mia_threshold_percentile', 50),
+    #             random_seed=cfg.security.get('mia_random_seed', 42)
+    #         )
+    #         mia_results = mia_attack.execute(rag_net, filtered_data_points)
+    #         mia_logger = exp_logger.get_yaml_logger("mia_config")
+    #         mia_logger.log(mia_results)
+    #         mia_logger.save()
+    #         logger.info(
+    #             f"MIA executed: Accuracy={mia_results['attack_accuracy']:.2%}, "
+    #             f"Privacy Risk={mia_results['privacy_risk']}"
+    #         )
 
-    # Execute knowledge base extraction attack if enabled
-    if cfg.security.enable_extraction:
-        logger.info("\n" + "=" * 80)
-        logger.info("KNOWLEDGE BASE EXTRACTION ATTACK")
-        logger.info("=" * 80)
+    # # Execute knowledge base extraction attack if enabled
+    # if cfg.security.enable_extraction:
+    #     logger.info("\n" + "=" * 80)
+    #     logger.info("KNOWLEDGE BASE EXTRACTION ATTACK")
+    #     logger.info("=" * 80)
 
-        extraction_attack = KnowledgeBaseExtractionAttack(
-            attacker_peer_id=cfg.security.extraction_attacker_peer,
-            queries_per_topic=cfg.security.extraction_queries_per_topic,
-            attack_type=cfg.security.extraction_attack_type,
-            use_topic_inference=cfg.security.extraction_use_topic_inference,
-            use_dataset_questions=cfg.security.extraction_use_dataset_questions
-        )
+    #     extraction_attack = KnowledgeBaseExtractionAttack(
+    #         attacker_peer_id=cfg.security.extraction_attacker_peer,
+    #         queries_per_topic=cfg.security.extraction_queries_per_topic,
+    #         attack_type=cfg.security.extraction_attack_type,
+    #         use_topic_inference=cfg.security.extraction_use_topic_inference,
+    #         use_dataset_questions=cfg.security.extraction_use_dataset_questions
+    #     )
 
-        extraction_results = extraction_attack.execute(rag_net, filtered_data_points)
+    #     extraction_results = extraction_attack.execute(rag_net, filtered_data_points)
 
-        logger.info("\n" + "-" * 80)
-        logger.info("EXTRACTION ATTACK SUMMARY:")
-        logger.info(f"  Attacker Peer: {extraction_results['attacker_peer_id']}")
-        logger.info(f"  Queries Sent: {extraction_results['total_queries_sent']}")
-        logger.info(f"  Successful Queries: {extraction_results['successful_queries']}")
-        logger.info(f"  Unique Extracted: {extraction_results['unique_datapoints_extracted']}")
-        logger.info(f"  Total Network KB Size: {extraction_results.get('total_network_datapoints', extraction_results.get('total_target_datapoints', 0))}")
-        logger.info(f"  Extraction Rate: {extraction_results['extraction_rate']:.2%}")
-        logger.info(f"  Query Efficiency: {extraction_results['query_efficiency']:.2%}")
-        logger.info(f"  Topic Coverage: {extraction_results['topic_coverage']:.2%}")
-        logger.info("-" * 80 + "\n")
+    #     logger.info("\n" + "-" * 80)
+    #     logger.info("EXTRACTION ATTACK SUMMARY:")
+    #     logger.info(f"  Attacker Peer: {extraction_results['attacker_peer_id']}")
+    #     logger.info(f"  Queries Sent: {extraction_results['total_queries_sent']}")
+    #     logger.info(f"  Successful Queries: {extraction_results['successful_queries']}")
+    #     logger.info(f"  Unique Extracted: {extraction_results['unique_datapoints_extracted']}")
+    #     logger.info(f"  Total Network KB Size: {extraction_results.get('total_network_datapoints', extraction_results.get('total_target_datapoints', 0))}")
+    #     logger.info(f"  Extraction Rate: {extraction_results['extraction_rate']:.2%}")
+    #     logger.info(f"  Query Efficiency: {extraction_results['query_efficiency']:.2%}")
+    #     logger.info(f"  Topic Coverage: {extraction_results['topic_coverage']:.2%}")
+    #     logger.info("-" * 80 + "\n")
 
-        extraction_metrics_logger = exp_logger.get_csv_logger("extraction_metrics")
-        extraction_metrics_logger.log({
-            "extraction_rate": extraction_results['extraction_rate'],
-            "extraction_queries_sent": extraction_results['total_queries_sent'],
-            "extraction_unique_extracted": extraction_results['unique_datapoints_extracted'],
-            "extraction_query_efficiency": extraction_results['query_efficiency'],
-            "extraction_topic_coverage": extraction_results['topic_coverage'],
-            "crr": extraction_results.get('crr', 0.0),
-            "avg_ss": extraction_results.get('avg_ss', 0.0),
-            "avg_eed": extraction_results.get('avg_eed', 1.0),
-            "recovered_chunks": extraction_results.get('recovered_chunks', 0),
-            "total_chunks": extraction_results.get('total_chunks', 0),
-            "exact_matches": extraction_results.get('exact_matches', 0),
-            "semantic_matches": extraction_results.get('semantic_matches', 0),
-            "edit_distance_matches": extraction_results.get('edit_distance_matches', 0)
-        })
-        extraction_metrics_logger.save()
+    #     extraction_metrics_logger = exp_logger.get_csv_logger("extraction_metrics")
+    #     extraction_metrics_logger.log({
+    #         "extraction_rate": extraction_results['extraction_rate'],
+    #         "extraction_queries_sent": extraction_results['total_queries_sent'],
+    #         "extraction_unique_extracted": extraction_results['unique_datapoints_extracted'],
+    #         "extraction_query_efficiency": extraction_results['query_efficiency'],
+    #         "extraction_topic_coverage": extraction_results['topic_coverage'],
+    #         "crr": extraction_results.get('crr', 0.0),
+    #         "avg_ss": extraction_results.get('avg_ss', 0.0),
+    #         "avg_eed": extraction_results.get('avg_eed', 1.0),
+    #         "recovered_chunks": extraction_results.get('recovered_chunks', 0),
+    #         "total_chunks": extraction_results.get('total_chunks', 0),
+    #         "exact_matches": extraction_results.get('exact_matches', 0),
+    #         "semantic_matches": extraction_results.get('semantic_matches', 0),
+    #         "edit_distance_matches": extraction_results.get('edit_distance_matches', 0)
+    #     })
+    #     extraction_metrics_logger.save()
 
-        extraction_output_path = f"{exp_logger.experiment_dir}/extraction_results.json"
-        with open(extraction_output_path, 'w') as f:
-            json.dump(extraction_results, f, indent=2)
-        logger.info(f"Detailed extraction results saved to: {extraction_output_path}")
+    #     extraction_output_path = f"{exp_logger.experiment_dir}/extraction_results.json"
+    #     with open(extraction_output_path, 'w') as f:
+    #         json.dump(extraction_results, f, indent=2)
+    #     logger.info(f"Detailed extraction results saved to: {extraction_output_path}")
 
-        if cfg.security.enable_extraction:
-            logger.info("=" * 80)
-            logger.info("EXTRACTION ATTACK COMPLETE - Skipping normal evaluation")
-            logger.info("Use a separate config without extraction for performance evaluation")
-            logger.info("=" * 80)
-            return  # Exit early
+    #     if cfg.security.enable_extraction:
+    #         logger.info("=" * 80)
+    #         logger.info("EXTRACTION ATTACK COMPLETE - Skipping normal evaluation")
+    #         logger.info("Use a separate config without extraction for performance evaluation")
+    #         logger.info("=" * 80)
+    #         return  # Exit early
 
     # =======================================================================
     # NODE AVAILABILITY ATTACK (PHASE 1: baseline → attack → post-attack)
@@ -602,11 +791,18 @@ def run_simulation(cfg: Namespace):
         logger.info(f"Baseline Results: {json.dumps(baseline_results)}")
 
         # --- PHASE 2: Execute node availability attack ---
-        node_attack_results = run_node_availability_attack(cfg, rag_net, dataset_type)
+        _attack_type = getattr(cfg.rag, "node_attack_type", "none")
+        if _attack_type == "ddos":
+            node_attack_results = run_ddos_node_attack(cfg, rag_net, dataset_type)
+        else:
+            node_attack_results = run_node_availability_attack(cfg, rag_net, dataset_type)
 
         # --- PHASE 3: Apply node attack damage ---
         if node_attack_results:
-            apply_node_attack_damage(rag_net, node_attack_results)
+            if _attack_type == "ddos":
+                apply_ddos_node_attack_damage(rag_net, node_attack_results)
+            else:
+                apply_node_attack_damage(rag_net, node_attack_results)
 
         # --- PHASE 4: Post-attack evaluation ---
         logger.info("PHASE 4: POST-ATTACK EVALUATION")
@@ -682,6 +878,14 @@ def run_simulation(cfg: Namespace):
                         is_query_hit=False
                     )
                     failed_queries += 1
+                    # Skip adding failed queries to evaluator — keeps quality
+                    # metrics honest (only score queries that actually returned).
+                    # Safe for other attacks: this except block only fires when
+                    # a peer is None, which is DDoS-exclusive behaviour.
+                    test_case_dict = test_case.model_dump()
+                    test_case_dict['evaluation_phase'] = 'post_attack'
+                    test_cases_logger.log(test_case_dict)
+                    continue
                 else:
                     raise
 
@@ -699,6 +903,11 @@ def run_simulation(cfg: Namespace):
         post_attack_results['failed_queries'] = failed_queries
         post_attack_results['successful_queries'] = successful_queries  # BUG FIX 2: store count
         post_attack_results['query_failure_rate'] = failed_queries / len(data_points) if len(data_points) > 0 else 0
+        # FIX: avg_query_hit must account for failed queries too — evaluator only
+        # saw successful queries so its avg_query_hit is artificially 1.0.
+        # This is safe for other attacks: they never have failed_queries > 0 here.
+        if failed_queries > 0 and len(data_points) > 0:
+            post_attack_results['avg_query_hit'] = successful_queries / len(data_points)
         metrics_logger.log(post_attack_results)
         metrics_logger.save()
         logger.info(f"Post-Attack Results: {json.dumps(post_attack_results)}")
@@ -764,6 +973,22 @@ def run_simulation(cfg: Namespace):
         print(f"\n  {'─'*70}")
         qfr = comparison['query_failure_rate']
         print(f"  {'QUERY_FAILURE_RATE':<25} {qfr['baseline']:>10.4f} {qfr['post_attack']:>12.4f} {qfr['degradation']:>+14.4f}")
+
+        # NETWORK ROUTING IMPACT — DDoS specific, shows how node loss
+        # degrades traversal depth and message count. Skipped for other
+        # attack types since they don't disable nodes.
+        if attack_type == 'ddos':
+            b_hops   = baseline_results.get('avg_num_hops', 0)
+            p_hops   = post_attack_results.get('avg_num_hops', 0)
+            b_msgs   = baseline_results.get('avg_num_messages', 0)
+            p_msgs   = post_attack_results.get('avg_num_messages', 0)
+            hops_drop = ((b_hops - p_hops) / (b_hops + 0.0001)) * 100
+            msgs_drop = ((b_msgs - p_msgs) / (b_msgs + 0.0001)) * 100
+            print(f"\n  NETWORK ROUTING IMPACT")
+            print(f"  {'─'*50}")
+            print(f"  {'AVG_NUM_HOPS':<20} Baseline: {b_hops:.2f}  →  Post-attack: {p_hops:.2f}  ({hops_drop:+.1f}%)")
+            print(f"  {'AVG_NUM_MESSAGES':<20} Baseline: {b_msgs:.2f}  →  Post-attack: {p_msgs:.2f}  ({msgs_drop:+.1f}%)")
+
         print("=" * 70)
         print(f"  ✅ Node attack simulation complete.")
         print("=" * 70 + "\n")

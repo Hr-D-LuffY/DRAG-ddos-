@@ -15,8 +15,8 @@ rag:
   #defense_config: "config/defense.yaml"  # Path to defense configuration file
   replication_factor: 1  # Number of peers per topic
   target_peers: []
-  enable_node_attack: false
-  node_attack_type: node_removal
+  enable_node_attack: true
+  node_attack_type: ddos
   node_attack_ratio: 0.3
   node_attack_iterations: 3
   attack_strategy: random
