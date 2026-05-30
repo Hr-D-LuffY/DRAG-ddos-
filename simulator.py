@@ -19,14 +19,43 @@ from modules.rag_network import DRAGNetwork, CRAGNetwork, NoRAGNetwork
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
 
-# new
 from modules.attacks import (
-    DataPoisoningAttack,
-    KnowledgeBaseExtractionAttack,
-    MembershipInferenceAttack,
     DDoSAttack,
+    InterceptResult,
 )
 
+
+# ==============================================================================
+# JSON SERIALIZATION HELPER
+# ==============================================================================
+
+def _make_json_serializable(obj):
+    """
+    Recursively convert any dict/list into a JSON-safe structure.
+
+    Non-serializable objects (class instances such as DDoSAttack, NodeAttack,
+    or any future attack class) are replaced with a readable string tag so
+    json.dump() never crashes, regardless of what any attack module stores
+    inside its results dict.
+
+    This helper is intentionally generic — teammates do not need to do
+    anything special when they store objects in their results dicts.
+    """
+    if isinstance(obj, dict):
+        return {k: _make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_make_json_serializable(v) for v in obj]
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        # Any class instance (DDoSAttack, future attack classes, etc.)
+        # is replaced with a readable tag instead of crashing.
+        return f"<not_serializable:{type(obj).__name__}>"
+
+
+# ==============================================================================
+# UTILITY
+# ==============================================================================
 
 def get_nested_value(data_dict: dict, dot_key_path: str):
     """
@@ -34,7 +63,7 @@ def get_nested_value(data_dict: dict, dot_key_path: str):
 
     Args:
         data_dict: The dictionary to retrieve the value from.
-        dot_key_path: A string representing the nested keys separated by dots (e.g., "key1.key2.key3").
+        dot_key_path: A string representing the nested keys separated by dots.
 
     Returns:
         The value at the specified path in the dictionary.
@@ -45,10 +74,10 @@ def get_nested_value(data_dict: dict, dot_key_path: str):
         value = value[key]
     return value
 
-
 def _get_node_attack_config(cfg):
     security_cfg = getattr(cfg, 'security', None)
     return getattr(security_cfg, 'node_attack', None) if security_cfg else None
+
 
 
 def _get_node_attack_value(cfg, key, default=None):
@@ -309,30 +338,31 @@ def apply_node_attack_damage(rag_network, node_attack_results: dict):
     sys.stdout.flush()
 
 
-
-
 # ==============================================================================
 # DDOS-SPECIFIC ATTACK FUNCTIONS
 # ==============================================================================
 
 def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
     """
-    Run a DDoS node availability attack using ddos_attack.NodeAttack.
-    This is a separate function that leaves run_node_availability_attack() untouched
-    so all other attack types continue to work as before.
+    Run a DDoS congestion-based node availability attack.
+
+    Nodes are NOT physically removed. Overload state is stored in node_data
+    and consulted at query time via DDoSAttack.intercept_query().
+    The DDoSAttack instance is stored in results["_attack_instance"] so that
+    the seeded RNG is available during the post-attack evaluation loop.
     """
-    print("" + "="*70)
+    print("="*70)
     print("DDOS NODE AVAILABILITY ATTACK - TESTING SYSTEM RESILIENCE")
     print("="*70)
     sys.stdout.flush()
 
-    attack_ratio       = getattr(cfg.rag, "node_attack_ratio", 0.3)
+    attack_ratio       = getattr(cfg.rag, "node_attack_ratio",    0.3)
     attack_iterations  = getattr(cfg.rag, "node_attack_iterations", 5)
-    attack_strategy    = getattr(cfg.rag, "attack_strategy", "random")
-    target_peers       = getattr(cfg.rag, "target_peers", [])
-    ddos_duration      = getattr(cfg.rag, "ddos_duration", 60.0)
-    ddos_intensity_min = getattr(cfg.rag, "ddos_intensity_min", 0.5)
-    ddos_intensity_max = getattr(cfg.rag, "ddos_intensity_max", 1.0)
+    attack_strategy    = getattr(cfg.rag, "attack_strategy",      "random")
+    target_peers       = getattr(cfg.rag, "target_peers",         [])
+    ddos_duration      = getattr(cfg.rag, "ddos_duration",        60.0)
+    ddos_intensity_min = getattr(cfg.rag, "ddos_intensity_min",   0.5)
+    ddos_intensity_max = getattr(cfg.rag, "ddos_intensity_max",   1.0)
     intensity_range    = (ddos_intensity_min, ddos_intensity_max)
 
     print(f"DDoS Attack Configuration:")
@@ -371,22 +401,22 @@ def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
     )
 
     results = {
-        "attack_type": "ddos",
-        "attack_ratio": attack_ratio,
-        "attack_strategy": attack_strategy,
-        "ddos_duration": ddos_duration,
-        "intensity_range": list(intensity_range),
-        "total_peers": num_peers,
-        "iterations": [],
+        "attack_type":        "ddos",
+        "attack_ratio":       attack_ratio,
+        "attack_strategy":    attack_strategy,
+        "ddos_duration":      ddos_duration,
+        "intensity_range":    list(intensity_range),
+        "total_peers":        num_peers,
+        "iterations":         [],
         "initial_availability": 100.0,
         "final_availability": 0.0,
     }
 
     node_data = {
-        "peer_ids": list(range(num_peers)),
+        "peer_ids":      list(range(num_peers)),
         "initial_count": num_peers,
-        "dataset_type": dataset_type,
-        "target_peers": target_peers if target_peers else None,
+        "dataset_type":  dataset_type,
+        "target_peers":  target_peers if target_peers else None,
     }
 
     print("Starting DDoS attack simulation...")
@@ -412,9 +442,9 @@ def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
 
         availability_metrics = node_attack._evaluate_availability(nodes, node_data)
         results["iterations"].append({
-            "iteration": iteration + 1,
-            "attack_result": attack_result,
-            "recovered_nodes": recovered,
+            "iteration":            iteration + 1,
+            "attack_result":        attack_result,
+            "recovered_nodes":      recovered,
             "availability_metrics": availability_metrics,
         })
 
@@ -439,14 +469,14 @@ def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
             print(f"  ⚠️  System availability below threshold ({confidence_threshold*100:.0f}%)")
             sys.stdout.flush()
 
-    elapsed_time = (datetime.now() - start_time).total_seconds()
+    elapsed_time  = (datetime.now() - start_time).total_seconds()
     final_metrics = node_attack._evaluate_availability(nodes, node_data)
     results["final_availability"] = final_metrics["availability_percentage"]
-    results["final_metrics"] = final_metrics
-    results["execution_time"] = elapsed_time
-    results["attack_summary"] = node_attack.get_attack_summary()
+    results["final_metrics"]      = final_metrics
+    results["execution_time"]     = elapsed_time
+    results["attack_summary"]     = node_attack.get_attack_summary()
 
-    print("" + "="*70)
+    print("="*70)
     print("DDOS ATTACK SUMMARY")
     print("="*70)
     print(f"Total Iterations : {attack_iterations}")
@@ -458,82 +488,122 @@ def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
     print("="*70)
     sys.stdout.flush()
 
-    drag_root = os.path.dirname(os.path.abspath(__file__))
+    drag_root   = os.path.dirname(os.path.abspath(__file__))
     results_dir = os.path.join(drag_root, "security_evaluation", "results")
     os.makedirs(results_dir, exist_ok=True)
     result_file = os.path.join(
         results_dir,
         f"ddos_attack_{dataset_type}_{int(datetime.now().timestamp())}.json"
     )
+    # Save only serializable fields (node_data and attack instance are runtime-only)
     with open(result_file, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(_make_json_serializable(results), f, indent=2)
     print(f"[+] DDoS attack results saved to: {result_file}")
     sys.stdout.flush()
 
+    # These two keys are runtime-only — used by PHASE 4, never written to JSON
+    # because _make_json_serializable handles them safely if they ever sneak in.
+    results["_node_data"]       = node_data    # live congestion state for intercept_query()
+    results["_attack_instance"] = node_attack  # seeded RNG instance for reproducibility
     return results
 
 
 def apply_ddos_node_attack_damage(rag_network, node_attack_results: dict):
     """
-    Apply DDoS damage to the live network.
-    Uses DDoSAttack.apply_to_network() to disable critically overloaded nodes (intensity >= 0.9).
-    Leaves the original apply_node_attack_damage() untouched for other attack types.
+    For DDoS attacks we do NOT physically disable peers.
+    The overload state lives in node_attack_results['_node_data'] and is
+    consulted at query time via DDoSAttack.intercept_query().
+    This function just logs the overload summary.
     """
     print("=" * 70)
-    print("APPLYING DDOS ATTACK DAMAGE TO NETWORK")
+    print("DDOS OVERLOAD STATE ACTIVE (no nodes removed)")
     print("=" * 70)
     sys.stdout.flush()
 
     if not node_attack_results or "attack_type" not in node_attack_results:
-        print("WARNING: No node attack results found, skipping damage application")
+        print("WARNING: No node attack results found")
         sys.stdout.flush()
         return
 
-    DDoSAttack.apply_to_network(rag_network, node_attack_results)
+    node_data  = node_attack_results.get("_node_data", {})
+    overloaded = node_data.get("ddos_targets", {})
+    drop_probs = node_data.get("drop_probability", {})
 
+    print(f"Overloaded nodes  : {len(overloaded)}  indices: {sorted(overloaded.keys())}")
+    if drop_probs:
+        avg_drop = sum(drop_probs.values()) / len(drop_probs)
+        print(f"Avg drop_prob     : {avg_drop:.3f}  "
+              f"(range {min(drop_probs.values()):.3f} – {max(drop_probs.values()):.3f})")
     final_avail   = node_attack_results.get("final_availability", 100.0)
     initial_avail = node_attack_results.get("initial_availability", 100.0)
-    print(f"Network availability degraded by {initial_avail - final_avail:.2f}%")
+    print(f"Availability drop : {initial_avail - final_avail:.2f}%")
     print("=" * 70)
     sys.stdout.flush()
 
+
 def run_simulation(cfg: Namespace):
-    # Init csv logger
-    exp_logger = ExpLogger()
+   # Build readable version folder name from attack config
+    _attack_type    = getattr(cfg.rag, "node_attack_type", "none")
+    _attack_ratio   = getattr(cfg.rag, "node_attack_ratio", 0.0)
+    _attack_enabled = getattr(cfg.rag, "enable_node_attack", False)
+
+    if _attack_enabled and _attack_type != "none":
+        if _attack_ratio <= 0.25:
+            _intensity_label = "LOW"
+        elif _attack_ratio <= 0.45:
+            _intensity_label = "MID"
+        else:
+            _intensity_label = "HIGH"
+        _attack_label = f"{_attack_type.upper()}_{_intensity_label}"
+    else:
+        _attack_label = "BASELINE"
+
+    # Clean short dataset name from HuggingFace path
+    _raw_path = cfg.data.load.path.lower()
+    if "news" in _raw_path:
+        _dataset_label = "NEWS"
+    elif "medical" in _raw_path:
+        _dataset_label = "MEDICAL"
+    elif "mmlu" in _raw_path:
+        _dataset_label = "MMLU"
+    else:
+        # fallback: take last part of path, uppercase, max 10 chars
+        _dataset_label = cfg.data.load.path.split("/")[-1].upper()[:10]
+
+    exp_logger = ExpLogger(attack_label=_attack_label, dataset_label=_dataset_label)
     logger.info(f"Experiment Log Directory: {exp_logger.experiment_dir}")
-    config_logger = exp_logger.get_yaml_logger("config")
-    metrics_logger = exp_logger.get_csv_logger("metrics")
+    config_logger   = exp_logger.get_yaml_logger("config")
+    metrics_logger  = exp_logger.get_csv_logger("metrics")
     test_cases_logger = exp_logger.get_csv_logger("test_cases")
 
-    # Save all config
     config_logger.log(cfg.as_dict())
     config_logger.save()
 
-    # Load Huggingface dataset
-    dataset = load_dataset(**cfg.data.load.as_dict())
+    # Load dataset
+    dataset     = load_dataset(**cfg.data.load.as_dict())
     data_points: List[Datapoint] = []
-    all_topics = set()
-
-    task_type = cfg.data.task_type
+    all_topics  = set()
+    task_type   = cfg.data.task_type
 
     if cfg.rag.test_mode:
         dataset = dataset.select(range(20))
     else:
         if cfg.data.num_samples is not None:
-            dataset = dataset.shuffle(seed=cfg.rag.random_seed).take(min(cfg.data.num_samples, len(dataset)))
+            dataset = dataset.shuffle(seed=cfg.rag.random_seed).take(
+                min(cfg.data.num_samples, len(dataset))
+            )
         else:
             dataset = dataset.shuffle(seed=cfg.rag.random_seed)
 
     # Prepare data points
     for item in dataset:
-        topic = get_nested_value(item, cfg.data.topic_path)
+        topic    = get_nested_value(item, cfg.data.topic_path)
         question = get_nested_value(item, cfg.data.question_path)
-        answer = get_nested_value(item, cfg.data.answer_path)
+        answer   = get_nested_value(item, cfg.data.answer_path)
         if task_type == "mcqa":
             choices = get_nested_value(item, cfg.data.choices_path)
             connection_term = " Select the best answer from the following candidates, replying with 1, 2, 3, or 4: "
             question = str(question) + connection_term + str(choices)
-
         data_point = Datapoint(topic=str(topic), question=str(question), answer=str(answer))
         all_topics.add(str(topic))
         data_points.append(data_point)
@@ -541,11 +611,9 @@ def run_simulation(cfg: Namespace):
     if cfg.rag.network_type == "DRAG":
         filtered_data_points = data_points
     elif cfg.rag.network_type == "CRAG":
-        num_topics_to_keep = int(len(all_topics) * (1.0 - cfg.rag.filter_out_topic_ratio))
-        filtered_topics = random.sample(list(all_topics), k=num_topics_to_keep)
-        filtered_data_points = [
-            dp for dp in data_points if dp.topic in filtered_topics
-        ]
+        num_topics_to_keep   = int(len(all_topics) * (1.0 - cfg.rag.filter_out_topic_ratio))
+        filtered_topics      = random.sample(list(all_topics), k=num_topics_to_keep)
+        filtered_data_points = [dp for dp in data_points if dp.topic in filtered_topics]
         num_datapoints_to_keep = int(len(filtered_data_points) * (1.0 - cfg.rag.filter_out_qa_ratio))
         filtered_data_points = random.sample(filtered_data_points, k=num_datapoints_to_keep)
     elif cfg.rag.network_type == "NoRAG":
@@ -572,110 +640,6 @@ def run_simulation(cfg: Namespace):
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
 
-    # === ATTACK SIMULATION ===
-    attack_results = None
-    mia_results = None
-    # if cfg.security.enable_attack:
-    #     logger.info("=" * 50)
-    #     logger.info("ATTACK SIMULATION ENABLED")
-    #     logger.info("=" * 50)
-
-    #     attack = DataPoisoningAttack(
-    #         poisoning_ratio=cfg.security.poisoning_ratio,
-    #         attack_strategy=cfg.security.attack_strategy,
-    #         poison_type=cfg.security.poison_type,
-    #         target_peer_ids=cfg.security.get('target_peer_ids', []),
-    #         amplification_factor=cfg.security.get('amplification_factor', 3),
-    #         question_variants=cfg.security.get('question_variants', 2)
-    #     )
-
-    #     attack_results = attack.execute(rag_net, filtered_data_points)
-
-    #     attack_logger = exp_logger.get_yaml_logger("attack_config")
-    #     attack_logger.log(attack_results)
-    #     attack_logger.save()
-
-    #     logger.info(f"Attack executed: {attack_results['num_poisoned_peers']} peers poisoned")
-
-    # if cfg.security.get('enable_membership_inference', False):
-    #     logger.info("=" * 50)
-    #     logger.info("MEMBERSHIP INFERENCE ATTACK ENABLED")
-    #     logger.info("=" * 50)
-    #     if cfg.rag.network_type != "DRAG":
-    #         logger.warning("Membership inference attack is only supported for DRAG networks. Skipping.")
-    #     else:
-    #         mia_attack = MembershipInferenceAttack(
-    #             inference_method=cfg.security.get('mia_inference_method', 'confidence_based'),
-    #             test_size=cfg.security.get('mia_test_size', 0.3),
-    #             threshold_percentile=cfg.security.get('mia_threshold_percentile', 50),
-    #             random_seed=cfg.security.get('mia_random_seed', 42)
-    #         )
-    #         mia_results = mia_attack.execute(rag_net, filtered_data_points)
-    #         mia_logger = exp_logger.get_yaml_logger("mia_config")
-    #         mia_logger.log(mia_results)
-    #         mia_logger.save()
-    #         logger.info(
-    #             f"MIA executed: Accuracy={mia_results['attack_accuracy']:.2%}, "
-    #             f"Privacy Risk={mia_results['privacy_risk']}"
-    #         )
-
-    # # Execute knowledge base extraction attack if enabled
-    # if cfg.security.enable_extraction:
-    #     logger.info("\n" + "=" * 80)
-    #     logger.info("KNOWLEDGE BASE EXTRACTION ATTACK")
-    #     logger.info("=" * 80)
-
-    #     extraction_attack = KnowledgeBaseExtractionAttack(
-    #         attacker_peer_id=cfg.security.extraction_attacker_peer,
-    #         queries_per_topic=cfg.security.extraction_queries_per_topic,
-    #         attack_type=cfg.security.extraction_attack_type,
-    #         use_topic_inference=cfg.security.extraction_use_topic_inference,
-    #         use_dataset_questions=cfg.security.extraction_use_dataset_questions
-    #     )
-
-    #     extraction_results = extraction_attack.execute(rag_net, filtered_data_points)
-
-    #     logger.info("\n" + "-" * 80)
-    #     logger.info("EXTRACTION ATTACK SUMMARY:")
-    #     logger.info(f"  Attacker Peer: {extraction_results['attacker_peer_id']}")
-    #     logger.info(f"  Queries Sent: {extraction_results['total_queries_sent']}")
-    #     logger.info(f"  Successful Queries: {extraction_results['successful_queries']}")
-    #     logger.info(f"  Unique Extracted: {extraction_results['unique_datapoints_extracted']}")
-    #     logger.info(f"  Total Network KB Size: {extraction_results.get('total_network_datapoints', extraction_results.get('total_target_datapoints', 0))}")
-    #     logger.info(f"  Extraction Rate: {extraction_results['extraction_rate']:.2%}")
-    #     logger.info(f"  Query Efficiency: {extraction_results['query_efficiency']:.2%}")
-    #     logger.info(f"  Topic Coverage: {extraction_results['topic_coverage']:.2%}")
-    #     logger.info("-" * 80 + "\n")
-
-    #     extraction_metrics_logger = exp_logger.get_csv_logger("extraction_metrics")
-    #     extraction_metrics_logger.log({
-    #         "extraction_rate": extraction_results['extraction_rate'],
-    #         "extraction_queries_sent": extraction_results['total_queries_sent'],
-    #         "extraction_unique_extracted": extraction_results['unique_datapoints_extracted'],
-    #         "extraction_query_efficiency": extraction_results['query_efficiency'],
-    #         "extraction_topic_coverage": extraction_results['topic_coverage'],
-    #         "crr": extraction_results.get('crr', 0.0),
-    #         "avg_ss": extraction_results.get('avg_ss', 0.0),
-    #         "avg_eed": extraction_results.get('avg_eed', 1.0),
-    #         "recovered_chunks": extraction_results.get('recovered_chunks', 0),
-    #         "total_chunks": extraction_results.get('total_chunks', 0),
-    #         "exact_matches": extraction_results.get('exact_matches', 0),
-    #         "semantic_matches": extraction_results.get('semantic_matches', 0),
-    #         "edit_distance_matches": extraction_results.get('edit_distance_matches', 0)
-    #     })
-    #     extraction_metrics_logger.save()
-
-    #     extraction_output_path = f"{exp_logger.experiment_dir}/extraction_results.json"
-    #     with open(extraction_output_path, 'w') as f:
-    #         json.dump(extraction_results, f, indent=2)
-    #     logger.info(f"Detailed extraction results saved to: {extraction_output_path}")
-
-    #     if cfg.security.enable_extraction:
-    #         logger.info("=" * 80)
-    #         logger.info("EXTRACTION ATTACK COMPLETE - Skipping normal evaluation")
-    #         logger.info("Use a separate config without extraction for performance evaluation")
-    #         logger.info("=" * 80)
-    #         return  # Exit early
 
     # =======================================================================
     # NODE AVAILABILITY ATTACK (PHASE 1: baseline → attack → post-attack)
@@ -703,13 +667,16 @@ def run_simulation(cfg: Namespace):
         logger.info("NODE AVAILABILITY ATTACK ENABLED")
         logger.info("=" * 50)
 
-        # --- PHASE 1: Baseline evaluation (before node attack) ---
+        # ── PHASE 1: Baseline evaluation ──────────────────────────────────
         logger.info("PHASE 1: BASELINE EVALUATION (BEFORE NODE ATTACK)")
         qa_evaluator_baseline = QAEvaluator()
-        baseline_successful = 0
-        baseline_failed = 0
+        baseline_successful   = 0
+        baseline_failed       = 0
 
-        for idx, data_point in enumerate(tqdm(data_points, desc=f"Baseline evaluation on {len(data_points)} test case(s)")):
+        for idx, data_point in enumerate(tqdm(
+            data_points,
+            desc=f"Baseline evaluation on {len(data_points)} test case(s)"
+        )):
             try:
                 if cfg.rag.network_type == "DRAG":
                     if cfg.rag.search_algorithm == "TARW":
@@ -782,36 +749,135 @@ def run_simulation(cfg: Namespace):
 
         test_cases_logger.save()
         baseline_results = qa_evaluator_baseline.get_results()
-        baseline_results['evaluation_phase'] = 'baseline'
+        baseline_results['evaluation_phase']   = 'baseline'
         baseline_results['successful_queries'] = baseline_successful
-        baseline_results['failed_queries'] = baseline_failed
-        baseline_results['query_failure_rate'] = baseline_failed / len(data_points) if data_points else 0
+        baseline_results['failed_queries']     = baseline_failed
+        baseline_results['query_failure_rate'] = (
+            baseline_failed / len(data_points) if data_points else 0
+        )
         metrics_logger.log(baseline_results)
         metrics_logger.save()
         logger.info(f"Baseline Results: {json.dumps(baseline_results)}")
 
-        # --- PHASE 2: Execute node availability attack ---
+        # ── PHASE 2: Execute attack ───────────────────────────────────────
         _attack_type = getattr(cfg.rag, "node_attack_type", "none")
         if _attack_type == "ddos":
             node_attack_results = run_ddos_node_attack(cfg, rag_net, dataset_type)
         else:
             node_attack_results = run_node_availability_attack(cfg, rag_net, dataset_type)
 
-        # --- PHASE 3: Apply node attack damage ---
+        # ── PHASE 3: Apply damage ─────────────────────────────────────────
         if node_attack_results:
             if _attack_type == "ddos":
                 apply_ddos_node_attack_damage(rag_net, node_attack_results)
             else:
                 apply_node_attack_damage(rag_net, node_attack_results)
 
-        # --- PHASE 4: Post-attack evaluation ---
+        # ── PHASE 4: Post-attack evaluation ──────────────────────────────
         logger.info("PHASE 4: POST-ATTACK EVALUATION")
         qa_evaluator_post = QAEvaluator()
-        failed_queries = 0
-        successful_queries = 0  # BUG FIX 2: track successful queries — fixes N/A in summary
+        failed_queries    = 0
+        successful_queries = 0
 
-        for idx, data_point in enumerate(tqdm(data_points, desc=f"Post-attack evaluation on {len(data_points)} test case(s)")):
+        # For DDoS: pull the live overload state so intercept_query() works.
+        # For other attacks: _ddos_node_data is empty → the block is skipped.
+        _ddos_node_data = (
+            node_attack_results.get("_node_data", {})
+            if node_attack_results and _attack_type == "ddos" else {}
+        )
+
+        _peers_obj = getattr(rag_net, "peers", None)
+        if isinstance(_peers_obj, list):
+            _peer_index_map = {id(p): i for i, p in enumerate(_peers_obj) if p is not None}
+        elif isinstance(_peers_obj, dict):
+            _peer_index_map = {id(p): i for i, p in _peers_obj.items() if p is not None}
+        else:
+            _peer_index_map = {}
+
+        for idx, data_point in enumerate(tqdm(
+            data_points,
+            desc=f"Post-attack evaluation on {len(data_points)} test case(s)"
+        )):
             try:
+                # ── DDoS intercept ────────────────────────────────────────
+                # Skipped entirely for non-DDoS attacks (_ddos_node_data is {}).
+                _extra_hops    = 0
+                _extra_msgs    = 0
+                _query_dropped = False
+
+                if _ddos_node_data and _peers_obj is not None:
+                    candidate_indices = (
+                        list(range(len(_peers_obj)))
+                        if isinstance(_peers_obj, list)
+                        else list(_peers_obj.keys())
+                    )
+
+                    # Use the seeded RNG from the DDoSAttack instance so all
+                    # random draws (peer selection + drop decisions) are
+                    # governed by one reproducible generator.
+                    _ddos_instance = (
+                        node_attack_results.get("_attack_instance")
+                        if node_attack_results else None
+                    )
+
+                    _chosen = (
+                        _ddos_instance._rng.choice(candidate_indices)
+                        if _ddos_instance
+                        else random.choice(candidate_indices)
+                    )
+                    ic = (
+                        _ddos_instance.intercept_query(_chosen, _ddos_node_data)
+                        if _ddos_instance
+                        else InterceptResult()
+                    )
+
+                    if ic.dropped:
+                        # One retry on a fallback peer before declaring failure.
+                        _fallback_pool = [i for i in candidate_indices if i != _chosen]
+                        if _fallback_pool:
+                            _fb = (
+                                _ddos_instance._rng.choice(_fallback_pool)
+                                if _ddos_instance
+                                else random.choice(_fallback_pool)
+                            )
+                            ic2 = (
+                                _ddos_instance.intercept_query(_fb, _ddos_node_data)
+                                if _ddos_instance
+                                else InterceptResult()
+                            )
+                            _extra_hops = ic.extra_hops + ic2.extra_hops
+                            _extra_msgs = ic.extra_msgs + ic2.extra_msgs
+                            if ic2.dropped:
+                                _query_dropped = True
+                        else:
+                            _extra_hops    = ic.extra_hops
+                            _extra_msgs    = ic.extra_msgs
+                            _query_dropped = True
+                    else:
+                        # Query accepted; still add congestion overhead.
+                        _extra_hops = ic.extra_hops
+                        _extra_msgs = ic.extra_msgs
+                # ── end DDoS intercept ────────────────────────────────────
+
+                if _query_dropped:
+                    # Record as zero-metric failure — pulls average down correctly.
+                    test_case = Testcase(
+                        question=data_point.question,
+                        expected_output=data_point.answer,
+                        actual_output="QUERY_FAILED_DDOS_DROP",
+                        relevant_knowledge="",
+                        relevant_score=0.0,
+                        num_hops=_extra_hops,
+                        num_messages=_extra_msgs,
+                        is_query_hit=False
+                    )
+                    failed_queries += 1
+                    test_case_dict = test_case.model_dump()
+                    test_case_dict['evaluation_phase'] = 'post_attack'
+                    test_cases_logger.log(test_case_dict)
+                    qa_evaluator_post.add(test_case)  # included, not skipped
+                    continue
+
                 if cfg.rag.network_type == "DRAG":
                     if cfg.rag.search_algorithm == "TARW":
                         rag_answer = rag_net.topic_query(
@@ -850,19 +916,19 @@ def run_simulation(cfg: Namespace):
                     actual_output=rag_answer.answer,
                     relevant_knowledge=rag_answer.relevant_knowledge,
                     relevant_score=rag_answer.relevant_score,
-                    num_hops=rag_answer.num_hops,
-                    num_messages=rag_answer.num_messages,
+                    num_hops=rag_answer.num_hops + _extra_hops,
+                    num_messages=rag_answer.num_messages + _extra_msgs,
                     is_query_hit=rag_answer.is_query_hit
                 )
-
-                # Check if this is a Byzantine response
                 if rag_answer.answer.startswith("INCORRECT_BYZANTINE_RESPONSE_"):
-                    logger.warning(f"Post-attack query {idx} received Byzantine response: {rag_answer.answer}")
-                    test_case.actual_output = "BYZANTINE_INCORRECT_ANSWER"
+                    logger.warning(
+                        f"Post-attack query {idx} received Byzantine response: {rag_answer.answer}"
+                    )
+                    test_case.actual_output  = "BYZANTINE_INCORRECT_ANSWER"
                     test_case.relevant_score = 0.0
-                    test_case.is_query_hit = False
+                    test_case.is_query_hit   = False
 
-                successful_queries += 1  # BUG FIX 2: count successful queries
+                successful_queries += 1
 
             except AttributeError as e:
                 if "'NoneType' object has no attribute" in str(e):
@@ -878,13 +944,10 @@ def run_simulation(cfg: Namespace):
                         is_query_hit=False
                     )
                     failed_queries += 1
-                    # Skip adding failed queries to evaluator — keeps quality
-                    # metrics honest (only score queries that actually returned).
-                    # Safe for other attacks: this except block only fires when
-                    # a peer is None, which is DDoS-exclusive behaviour.
                     test_case_dict = test_case.model_dump()
                     test_case_dict['evaluation_phase'] = 'post_attack'
                     test_cases_logger.log(test_case_dict)
+                    qa_evaluator_post.add(test_case)  # score as zero, don't skip
                     continue
                 else:
                     raise
@@ -899,45 +962,44 @@ def run_simulation(cfg: Namespace):
 
         test_cases_logger.save()
         post_attack_results = qa_evaluator_post.get_results()
-        post_attack_results['evaluation_phase'] = 'post_attack'
-        post_attack_results['failed_queries'] = failed_queries
-        post_attack_results['successful_queries'] = successful_queries  # BUG FIX 2: store count
-        post_attack_results['query_failure_rate'] = failed_queries / len(data_points) if len(data_points) > 0 else 0
-        # FIX: avg_query_hit must account for failed queries too — evaluator only
-        # saw successful queries so its avg_query_hit is artificially 1.0.
-        # This is safe for other attacks: they never have failed_queries > 0 here.
+        post_attack_results['evaluation_phase']   = 'post_attack'
+        post_attack_results['failed_queries']     = failed_queries
+        post_attack_results['successful_queries'] = successful_queries
+        post_attack_results['query_failure_rate'] = (
+            failed_queries / len(data_points) if len(data_points) > 0 else 0
+        )
+        # avg_query_hit from the evaluator only reflects successful queries.
+        # Recompute it over the full dataset so failures pull the average down.
         if failed_queries > 0 and len(data_points) > 0:
             post_attack_results['avg_query_hit'] = successful_queries / len(data_points)
+
         metrics_logger.log(post_attack_results)
         metrics_logger.save()
         logger.info(f"Post-Attack Results: {json.dumps(post_attack_results)}")
 
-        # --- PHASE 5: Comparison and final report ---
+        # ── PHASE 5: Comparison and final report ──────────────────────────
         logger.info("=" * 50)
         logger.info("FINAL COMPARISON: BASELINE vs POST-ATTACK")
         logger.info("=" * 50)
 
         comparison = {}
-        for metric in ['exact_match', 'precision', 'recall', 'f1', 'avg_query_hit', 'query_failure_rate']:
-            baseline_val = baseline_results.get(metric, 0)
+        for metric in ['exact_match', 'precision', 'recall', 'f1',
+                        'avg_query_hit', 'query_failure_rate']:
+            baseline_val    = baseline_results.get(metric, 0)
             post_attack_val = post_attack_results.get(metric, 0)
-
-            if metric == 'query_failure_rate':
-                degradation = post_attack_val - baseline_val
-            else:
-                degradation = baseline_val - post_attack_val
+            degradation     = (
+                post_attack_val - baseline_val   # positive = worse for failure rate
+                if metric == 'query_failure_rate'
+                else baseline_val - post_attack_val  # positive = worse for quality metrics
+            )
             degradation_pct = (degradation / (baseline_val + 0.0001)) * 100
-
             comparison[metric] = {
-                'baseline': baseline_val,
-                'post_attack': post_attack_val,
-                'degradation': degradation,
+                'baseline':        baseline_val,
+                'post_attack':     post_attack_val,
+                'degradation':     degradation,
                 'degradation_pct': degradation_pct
             }
 
-        # ================================================================
-        # PRINT CLEAN TERMINAL SUMMARY
-        # ================================================================
         attack_type  = getattr(cfg.rag, 'node_attack_type', 'none')
         attack_ratio = getattr(cfg.rag, 'node_attack_ratio', 0.0)
         total_queries = len(data_points)
@@ -945,7 +1007,6 @@ def run_simulation(cfg: Namespace):
         b_success   = baseline_results.get('successful_queries', total_queries)
         b_failed    = baseline_results.get('failed_queries', 0)
         b_fail_rate = baseline_results.get('query_failure_rate', 0)
-
         p_success   = post_attack_results.get('successful_queries', 0)
         p_failed    = post_attack_results.get('failed_queries', 0)
         p_fail_rate = post_attack_results.get('query_failure_rate', 0)
@@ -953,60 +1014,64 @@ def run_simulation(cfg: Namespace):
         print("\n" + "=" * 70)
         print(f"  NODE ATTACK RESULTS SUMMARY")
         print(f"  Attack Type  : {attack_type.upper()}")
-        print(f"  Attack Ratio : {attack_ratio} ({attack_ratio*100:.0f}% of nodes removed)")
+        print(f"  Attack Ratio : {attack_ratio} ({attack_ratio*100:.0f}% of nodes overloaded)")
         print("=" * 70)
-
         print(f"\n  QUERY AVAILABILITY")
         print(f"  {'─'*50}")
         print(f"  Baseline  → Successful: {b_success}/{total_queries}  |  Failed: {b_failed}/{total_queries}  |  Failure Rate: {b_fail_rate:.0%}")
         print(f"  Attacked  → Successful: {p_success}/{total_queries}  |  Failed: {p_failed}/{total_queries}  |  Failure Rate: {p_fail_rate:.0%}")
-
         print(f"\n  {'METRIC':<25} {'BASELINE':>10} {'POST-ATTACK':>12} {'DEGRADATION':>14} {'IMPACT %':>10}")
         print(f"  {'─'*25} {'─'*10} {'─'*12} {'─'*14} {'─'*10}")
 
         for metric in ['exact_match', 'precision', 'recall', 'f1', 'avg_query_hit']:
-            c = comparison[metric]
+            c       = comparison[metric]
             bar_len = int(abs(c['degradation_pct']) / 5)
-            bar = '█' * min(bar_len, 15)
-            print(f"  {metric.upper():<25} {c['baseline']:>10.4f} {c['post_attack']:>12.4f} {c['degradation']:>+14.4f} {c['degradation_pct']:>9.2f}%  {bar}")
+            bar     = '█' * min(bar_len, 15)
+            print(f"  {metric.upper():<25} {c['baseline']:>10.4f} {c['post_attack']:>12.4f} "
+                  f"{c['degradation']:>+14.4f} {c['degradation_pct']:>9.2f}%  {bar}")
 
         print(f"\n  {'─'*70}")
         qfr = comparison['query_failure_rate']
-        print(f"  {'QUERY_FAILURE_RATE':<25} {qfr['baseline']:>10.4f} {qfr['post_attack']:>12.4f} {qfr['degradation']:>+14.4f}")
+        print(f"  {'QUERY_FAILURE_RATE':<25} {qfr['baseline']:>10.4f} "
+              f"{qfr['post_attack']:>12.4f} {qfr['degradation']:>+14.4f}")
 
-        # NETWORK ROUTING IMPACT — DDoS specific, shows how node loss
-        # degrades traversal depth and message count. Skipped for other
-        # attack types since they don't disable nodes.
         if attack_type == 'ddos':
-            b_hops   = baseline_results.get('avg_num_hops', 0)
-            p_hops   = post_attack_results.get('avg_num_hops', 0)
-            b_msgs   = baseline_results.get('avg_num_messages', 0)
-            p_msgs   = post_attack_results.get('avg_num_messages', 0)
-            hops_drop = ((b_hops - p_hops) / (b_hops + 0.0001)) * 100
-            msgs_drop = ((b_msgs - p_msgs) / (b_msgs + 0.0001)) * 100
-            print(f"\n  NETWORK ROUTING IMPACT")
+            b_hops      = baseline_results.get('avg_num_hops', 0)
+            p_hops      = post_attack_results.get('avg_num_hops', 0)
+            b_msgs      = baseline_results.get('avg_num_messages', 0)
+            p_msgs      = post_attack_results.get('avg_num_messages', 0)
+            hops_change = ((p_hops - b_hops) / (b_hops + 0.0001)) * 100
+            msgs_change = ((p_msgs - b_msgs) / (b_msgs + 0.0001)) * 100
+            print(f"\n  NETWORK ROUTING IMPACT (overhead increase due to congestion)")
             print(f"  {'─'*50}")
-            print(f"  {'AVG_NUM_HOPS':<20} Baseline: {b_hops:.2f}  →  Post-attack: {p_hops:.2f}  ({hops_drop:+.1f}%)")
-            print(f"  {'AVG_NUM_MESSAGES':<20} Baseline: {b_msgs:.2f}  →  Post-attack: {p_msgs:.2f}  ({msgs_drop:+.1f}%)")
+            print(f"  {'AVG_NUM_HOPS':<20} Baseline: {b_hops:.2f}  →  Post-attack: {p_hops:.2f}  ({hops_change:+.1f}% overhead)")
+            print(f"  {'AVG_NUM_MESSAGES':<20} Baseline: {b_msgs:.2f}  →  Post-attack: {p_msgs:.2f}  ({msgs_change:+.1f}% overhead)")
 
         print("=" * 70)
         print(f"  ✅ Node attack simulation complete.")
         print("=" * 70 + "\n")
         sys.stdout.flush()
 
-        # Save comparison JSON
-        comparison_file = os.path.join(exp_logger.experiment_dir, "node_attack_impact_comparison.json")
+        # Save comparison JSON — _make_json_serializable handles any class
+        # instances stored by any current or future attack module.
+        comparison_file = os.path.join(
+            exp_logger.experiment_dir,
+            f"{_attack_label}_{_dataset_label}_comparison.json"
+        )
         with open(comparison_file, 'w') as f:
-            json.dump({
-                'baseline_results': baseline_results,
-                'node_attack_results': node_attack_results,
-                'post_attack_results': post_attack_results,
-                'comparison': comparison,
-                'attack_type': attack_type
-            }, f, indent=2)
+            json.dump(
+                _make_json_serializable({
+                    'baseline_results':    baseline_results,
+                    'node_attack_results': node_attack_results,
+                    'post_attack_results': post_attack_results,
+                    'comparison':          comparison,
+                    'attack_type':         attack_type
+                }),
+                f, indent=2
+            )
         logger.info(f"Comparison report saved to: {comparison_file}")
 
-        eval_results = post_attack_results  # BUG FIX 3: set for downstream defense/attack logging
+        eval_results = post_attack_results  # pass through to downstream logging
 
     else:
         # =======================================================================
@@ -1014,7 +1079,10 @@ def run_simulation(cfg: Namespace):
         # =======================================================================
         qa_evaluator = QAEvaluator()
 
-        for idx, data_point in enumerate(tqdm(data_points, desc=f"Inferencing on {len(data_points)} test case(s)")):
+        for idx, data_point in enumerate(tqdm(
+            data_points,
+            desc=f"Inferencing on {len(data_points)} test case(s)"
+        )):
             if cfg.rag.network_type == "DRAG":
                 if cfg.rag.search_algorithm == "TARW":
                     rag_answer = rag_net.topic_query(
@@ -1071,7 +1139,7 @@ def run_simulation(cfg: Namespace):
         metrics_logger.log(eval_results)
         metrics_logger.save()
 
-    # Log defense statistics if enabled
+    # Defense statistics (unchanged — works for all attack types)
     if cfg.rag.network_type == "DRAG" and rag_net.defense_enabled and rag_net.defense_mechanism:
         defense_stats = rag_net.defense_mechanism.get_stats()
         logger.info("=" * 50)
@@ -1083,52 +1151,10 @@ def run_simulation(cfg: Namespace):
         logger.info(f"Passed Answers: {defense_stats['passed_answers']}")
         logger.info(f"Block Rate: {defense_stats['block_rate']:.2%}")
         logger.info(f"Avg Confidence: {defense_stats['avg_confidence']:.3f}")
-
         eval_results['defense_stats'] = defense_stats
-
         defense_logger = exp_logger.get_yaml_logger("defense_stats")
         defense_logger.log(defense_stats)
         defense_logger.save()
-
-    # Evaluate attack success if data poisoning attack was performed
-    if attack_results is not None:
-        logger.info("=" * 50)
-        logger.info("EVALUATING ATTACK SUCCESS")
-        logger.info("=" * 50)
-
-        attack_eval = {
-            "attack_config": attack_results,
-            "attacked_metrics": eval_results,
-            "performance_impact": {
-                "f1_score": eval_results.get("f1", 0.0),
-                "exact_match": eval_results.get("exact_match", 0.0),
-                "semantic_similarity": eval_results.get("semantic_similarity", 0.0)
-            }
-        }
-
-        attack_eval_logger = exp_logger.get_yaml_logger("attack_evaluation")
-        attack_eval_logger.log(attack_eval)
-        attack_eval_logger.save()
-
-        logger.info(f"\nAttack Evaluation:\n{json.dumps(attack_eval, indent=2)}\n")
-
-    if mia_results is not None:
-        logger.info("=" * 50)
-        logger.info("EVALUATING MEMBERSHIP INFERENCE ATTACK SUCCESS")
-        logger.info("=" * 50)
-        mia_eval = {
-            "attack_results": mia_results,
-            "interpretation": {
-                "attack_success": mia_results["attack_accuracy"] > 0.5,
-                "privacy_leak_detected": mia_results["attack_accuracy"] > 0.6,
-                "attack_accuracy": f"{mia_results['attack_accuracy']:.2%}",
-                "privacy_risk": mia_results["privacy_risk"],
-            },
-        }
-        mia_eval_logger = exp_logger.get_yaml_logger("mia_evaluation")
-        mia_eval_logger.log(mia_eval)
-        mia_eval_logger.save()
-        logger.info(f"\nMIA Evaluation:\n{json.dumps(mia_eval, indent=2)}\n")
 
     logger.info(f"\nFinal Evaluation Results:\n{json.dumps(eval_results)}\n")
 
@@ -1145,7 +1171,6 @@ def main():
     logger.remove()  # Remove default handler.
     logger.add(sys.stderr, level=cfg.log_level)
 
-    # run evaluation
     run_simulation(cfg)
 
 

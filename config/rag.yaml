@@ -1,23 +1,65 @@
-log_level: DEBUG  # DEBUG, INFO, WARNING, ERROR, etc.
+log_level: DEBUG
+
 rag:
   random_seed: 0
   log_every_n_steps: 10
   test_mode: True
-  network_type: 'DRAG'  # DRAG (Distributed RAG), CRAG (Centralized RAG), or NoRAG (No RAG)
+  network_type: "DRAG" # DRAG (Distributed RAG), CRAG (Centralized RAG), or NoRAG (No RAG)
+
   num_peers: 20
-  num_peer_attachments: 4  # barabasi_albert_graph: Number of edges to attach from a new node to existing nodes
-  search_algorithm: 'TARW'  # TARW (Topic-Aware Random Walk), RW (Random Walk), or FL (Flooding)
-  query_confidence_threshold: 0.8  # The confidence threshold required for an answer to be accepted
-  num_query_neighbor: 4  # topic-based search: The maximum number of neighbors to query at each hop
-  query_ttl: 6  # The time-to-live for the query (maximum number of hops).
-  filter_out_topic_ratio: 0.0  # The ratio of topics to be filtered out for retrieval
-  filter_out_qa_ratio: 0.0  # The ratio of question-answer to be filtered out for retrieval
+  num_peer_attachments: 4 # barabasi_albert_graph: Number of edges to attach from a new node to existing nodes
+  search_algorithm: "TARW" # TARW (Topic-Aware Random Walk), RW (Random Walk), or FL (Flooding)
+  query_confidence_threshold: 0.8 # The confidence threshold required for an answer to be accepted
+  num_query_neighbor: 4 # topic-based search: The maximum number of neighbors to query at each hop
+  query_ttl: 6 # The time-to-live for the query (maximum number of hops).
+
+  filter_out_topic_ratio: 0.0 # The ratio of topics to be filtered out for retrieval
+  filter_out_qa_ratio: 0.0 # The ratio of question-answer to be filtered out for retrieval
   #defense_config: "config/defense.yaml"  # Path to defense configuration file
-  replication_factor: 1  # Number of peers per topic
+  replication_factor: 1 # Number of peers per topic
   target_peers: []
+  confidence_threshold: 0.5
   enable_node_attack: true
   node_attack_type: ddos
-  node_attack_ratio: 0.3
+
+  # ====================================================================
+  # DDOS_ATTACK CONFIGURATIONS
+  # Uncomment ONE block at a time, comment out the other two.
+  # Then run:
+  #   python simulator.py --config config/data/news.yaml
+  #   python simulator.py --config config/data/medical.yaml
+  #   python simulator.py --config config/data/mmlu.yaml
+  # ====================================================================
+
+  # ── DDOS_ATTACK 1: Low Intensity Probe ────────────────────────────────────
+  # Scenario : small unsophisticated botnet, random targeting
+  # Expected : ~10-15% query failure rate, mild degradation
+  # -----------------------------------------------------------------------------
+  node_attack_ratio: 0.2
   node_attack_iterations: 3
   attack_strategy: random
-  confidence_threshold: 0.5
+  ddos_duration: 600
+  ddos_intensity_min: 0.3
+  ddos_intensity_max: 0.6
+
+  # ── DDOS_ATTACK 2: Sustained Targeted Surge ───────────────────────────────
+  # Scenario : intelligent attacker, targets fresh peers each wave
+  # Expected : ~30-40% query failure rate, significant degradation
+  # -----------------------------------------------------------------------------
+  # node_attack_ratio: 0.4
+  # node_attack_iterations: 5
+  # attack_strategy: targeted
+  # ddos_duration: 600
+  # ddos_intensity_min: 0.6
+  # ddos_intensity_max: 0.9
+
+  # ── DDOS_ATTACK 3: Flooding Saturation ────────────────────────────────────
+  # Scenario : maximum-volume coordinated botnet, systematic sweep
+  # Expected : ~55-65% query failure rate, near-collapse of QA quality
+  # -----------------------------------------------------------------------------
+  # node_attack_ratio: 0.6
+  # node_attack_iterations: 5
+  # attack_strategy: sequential
+  # ddos_duration: 600
+  # ddos_intensity_min: 0.8
+  # ddos_intensity_max: 1.0
