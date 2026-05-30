@@ -345,9 +345,14 @@ class DDoSAttack:
 
         # ── Step 3: Assign overload metadata per target ───────────────────
         for idx in targets:
-            # Attack intensity: a random value in intensity_range.
-            # Higher intensity → more packets hitting the peer → higher drop
-            # rate and higher load penalty.  Sampled via seeded RNG.
+            # Attack intensity: a random value sampled uniformly from intensity_range.
+            # Uniform sampling models heterogeneous botnet pressure — different
+            # bots in the attacking fleet send traffic at different rates, so
+            # each targeted peer receives a different load level.  A uniform
+            # distribution is the maximum-entropy choice when no additional
+            # information about the botnet's traffic profile is available, and
+            # is a standard simplification at the application-layer abstraction
+            # level used in this thesis (packet-level burstiness is out of scope).
             intensity = self._rng.uniform(*intensity_range)
 
             # Drop probability:
@@ -587,6 +592,12 @@ class DDoSAttack:
         ddos_targets = node_data.get("ddos_targets", {})
         drop_probs   = node_data.get("drop_probability", {})
 
+        # Availability threshold: a peer is considered effectively unavailable
+        # when its drop_probability >= 0.5, meaning it rejects the majority of
+        # incoming queries.  This mirrors a standard SLA definition where a
+        # service that fails more than 50% of requests is classified as "down".
+        # The 0.5 boundary is intentional and documented here so examiners
+        # understand the design choice rather than treating it as an arbitrary magic number.
         effectively_down = sum(1 for p in drop_probs.values() if p >= 0.5)
         active_nodes     = num_peers - effectively_down
         availability_pct = 100.0 * active_nodes / max(num_peers, 1)
@@ -651,6 +662,3 @@ class DDoSAttack:
             return self._rng.sample(
                 all_indices, min(num_to_attack, len(all_indices))
             )
-
-
-

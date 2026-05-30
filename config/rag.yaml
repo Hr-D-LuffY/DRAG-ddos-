@@ -35,12 +35,12 @@ rag:
   # Scenario : small unsophisticated botnet, random targeting
   # Expected : ~10-15% query failure rate, mild degradation
   # -----------------------------------------------------------------------------
-  node_attack_ratio: 0.2
-  node_attack_iterations: 3
-  attack_strategy: random
-  ddos_duration: 600
-  ddos_intensity_min: 0.3
-  ddos_intensity_max: 0.6
+  # node_attack_ratio: 0.2
+  # node_attack_iterations: 3
+  # attack_strategy: random
+  # ddos_duration: 600
+  # ddos_intensity_min: 0.3
+  # ddos_intensity_max: 0.6
 
   # ── DDOS_ATTACK 2: Sustained Targeted Surge ───────────────────────────────
   # Scenario : intelligent attacker, targets fresh peers each wave
@@ -57,9 +57,9 @@ rag:
   # Scenario : maximum-volume coordinated botnet, systematic sweep
   # Expected : ~55-65% query failure rate, near-collapse of QA quality
   # -----------------------------------------------------------------------------
-  # node_attack_ratio: 0.6
-  # node_attack_iterations: 5
-  # attack_strategy: sequential
-  # ddos_duration: 600
-  # ddos_intensity_min: 0.8
-  # ddos_intensity_max: 1.0
+  node_attack_ratio: 0.6
+  node_attack_iterations: 5
+  attack_strategy: random
+  ddos_duration: 600
+  ddos_intensity_min: 0.8
+  ddos_intensity_max: 1.0

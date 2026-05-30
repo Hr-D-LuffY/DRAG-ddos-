@@ -1,0 +1,221 @@
+{
+  "attack_type": "ddos",
+  "attack_ratio": 0.4,
+  "attack_strategy": "targeted",
+  "ddos_duration": 600.0,
+  "intensity_range": [
+    0.6,
+    0.9
+  ],
+  "total_peers": 20,
+  "iterations": [
+    {
+      "iteration": 1,
+      "attack_result": {
+        "newly_overloaded": 8,
+        "cascade_neighbours": 1,
+        "cumulative_overloaded": 8,
+        "targets": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "intensity_per_node": {
+          "0": 0.8533265554575145,
+          "1": 0.8273863208820907,
+          "2": 0.7261714742492535,
+          "3": 0.677675025087889,
+          "4": 0.7533824164105826,
+          "5": 0.7214802412351242,
+          "6": 0.8351395767104318,
+          "7": 0.6909938178236782
+        },
+        "disabled_nodes": [],
+        "removed_indices": []
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "availability_percentage": 60.0,
+        "active_nodes": 12,
+        "ddos_overloaded_nodes": 9,
+        "effectively_down_nodes": 8,
+        "average_load_intensity": 0.6953670980347204
+      }
+    },
+    {
+      "iteration": 2,
+      "attack_result": {
+        "newly_overloaded": 8,
+        "cascade_neighbours": 2,
+        "cumulative_overloaded": 16,
+        "targets": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ],
+        "intensity_per_node": {
+          "9": 0.7429790862457067,
+          "10": 0.7750146118365093,
+          "11": 0.8724338655586006,
+          "12": 0.7514060567452171,
+          "13": 0.6845513533199111,
+          "14": 0.8267412612471672,
+          "15": 0.7855106990025995,
+          "16": 0.6751519024087321
+        },
+        "disabled_nodes": [],
+        "removed_indices": []
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "availability_percentage": 20.0,
+        "active_nodes": 4,
+        "ddos_overloaded_nodes": 18,
+        "effectively_down_nodes": 16,
+        "average_load_intensity": 0.7070347481022521
+      }
+    },
+    {
+      "iteration": 3,
+      "attack_result": {
+        "newly_overloaded": 2,
+        "cascade_neighbours": 1,
+        "cumulative_overloaded": 18,
+        "targets": [
+          18,
+          19,
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "intensity_per_node": {
+          "18": 0.8729238767904721,
+          "19": 0.894835642811296,
+          "0": 0.8533265554575145,
+          "1": 0.8706497851318749,
+          "2": 0.7261714742492535,
+          "3": 0.8189495244780386,
+          "4": 0.8696514863903981,
+          "5": 0.8051951795746324
+        },
+        "disabled_nodes": [],
+        "removed_indices": []
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "availability_percentage": 10.0,
+        "active_nodes": 2,
+        "ddos_overloaded_nodes": 20,
+        "effectively_down_nodes": 18,
+        "average_load_intensity": 0.7548568963299591
+      }
+    },
+    {
+      "iteration": 4,
+      "attack_result": {
+        "newly_overloaded": 0,
+        "cascade_neighbours": 1,
+        "cumulative_overloaded": 18,
+        "targets": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "intensity_per_node": {
+          "0": 0.8533265554575145,
+          "1": 0.8706497851318749,
+          "2": 0.7302515506361351,
+          "3": 0.8189495244780386,
+          "4": 0.8739033159713695,
+          "5": 0.8899819103312276,
+          "6": 0.8351395767104318,
+          "7": 0.859592978331492
+        },
+        "disabled_nodes": [],
+        "removed_indices": []
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "availability_percentage": 10.0,
+        "active_nodes": 2,
+        "ddos_overloaded_nodes": 20,
+        "effectively_down_nodes": 18,
+        "average_load_intensity": 0.7786876984207158
+      }
+    },
+    {
+      "iteration": 5,
+      "attack_result": {
+        "newly_overloaded": 0,
+        "cascade_neighbours": 1,
+        "cumulative_overloaded": 18,
+        "targets": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "intensity_per_node": {
+          "0": 0.8533265554575145,
+          "1": 0.8706497851318749,
+          "2": 0.7646097911506768,
+          "3": 0.8189495244780386,
+          "4": 0.8739033159713695,
+          "5": 0.8899819103312276,
+          "6": 0.8474534931444699,
+          "7": 0.859592978331492
+        },
+        "disabled_nodes": [],
+        "removed_indices": []
+      },
+      "recovered_nodes": [],
+      "availability_metrics": {
+        "availability_percentage": 10.0,
+        "active_nodes": 2,
+        "ddos_overloaded_nodes": 20,
+        "effectively_down_nodes": 18,
+        "average_load_intensity": 0.7823517327381339
+      }
+    }
+  ],
+  "initial_availability": 100.0,
+  "final_availability": 10.0,
+  "final_metrics": {
+    "availability_percentage": 10.0,
+    "active_nodes": 2,
+    "ddos_overloaded_nodes": 20,
+    "effectively_down_nodes": 18,
+    "average_load_intensity": 0.7823517327381339
+  },
+  "execution_time": 0.008363,
+  "attack_summary": {
+    "attack_type": "ddos_congestion",
+    "attack_ratio": 0.4,
+    "attack_iterations": 5,
+    "cascade_factor": 0.25,
+    "total_waves": 5,
+    "cumulative_overloaded": 18
+  }
+}

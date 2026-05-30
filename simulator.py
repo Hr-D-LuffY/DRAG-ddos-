@@ -429,16 +429,19 @@ def run_ddos_node_attack(cfg: Namespace, rag_network, dataset_type: str):
         print(f"--- Iteration {iteration + 1}/{attack_iterations} ---")
         sys.stdout.flush()
 
+        # System self-recovery: models firewall/rate-limit recovery between waves.
+        # Belongs here (not inside execute) because recovery is the system's
+        # response, not part of the attacker's action.
+        recovered = node_attack._recover_expired_nodes(node_data)
+        if recovered:
+            print(f"  ↩  System recovered {len(recovered)} node(s): {recovered}")
+
         attack_result = node_attack.execute(
             nodes, node_data,
             strategy=attack_strategy,
             duration=ddos_duration,
             intensity_range=intensity_range,
         )
-
-        recovered = node_attack._recover_expired_nodes(node_data)
-        if recovered:
-            print(f"  ↩  Recovered {len(recovered)} node(s): {recovered}")
 
         availability_metrics = node_attack._evaluate_availability(nodes, node_data)
         results["iterations"].append({
